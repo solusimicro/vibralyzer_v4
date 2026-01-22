@@ -9,6 +9,7 @@ SIM_CONFIG = {
     # ======================
     "fs": 25600,
     "samples": 4096,
+    "speed_rpm": 1800,
 
     # ======================
     # Baseline vibration

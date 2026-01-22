@@ -1,25 +1,32 @@
-from diagnostic_l2.fault_rules import run_rules
+# diagnostic_l2/diagnostic_engine.py
 
-def run_diagnostic(l1_snapshot: dict, early_fault_event: dict):
-    """
-    L2 Diagnostic MUST be gated by Early Fault
-    """
+from diagnostic_l2.fault_rules import FAULT_RULES
 
-    # HARD GATE 1 — Early Fault only
-    if not early_fault_event.get("early_fault", False):
-        return []
 
-    # HARD GATE 2 — Asset consistency
-    if l1_snapshot["asset"] != early_fault_event["asset"]:
-        return []
+class DiagnosticEngine:
+    def diagnose(self, features: dict, state: str):
+        """
+        Return standardized fault_type
+        """
+        for rule in FAULT_RULES:
+            if rule["severity"] != state:
+                continue
 
-    if l1_snapshot["point"] != early_fault_event["point"]:
-        return []
+            match = True
+            for feat, cond in rule["conditions"].items():
+                if feat not in features:
+                    match = False
+                    break
 
-    # HARD GATE 3 — Time order
-    if early_fault_event["timestamp"] < l1_snapshot["timestamp"]:
-        return []
+                value = features[feat]
+                if cond == ">" and value <= 0:
+                    match = False
+                if cond == "<" and value >= 5:
+                    match = False
 
-    # OK → Run L2 rules
-    return run_rules(l1_snapshot)
+            if match:
+                return rule["fault_type"]
+
+        return "GENERAL_HEALTH"
+
 

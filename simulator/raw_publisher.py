@@ -10,6 +10,7 @@ def publish_raw(cfg, acc):
         "point": cfg["point"],
         "acceleration": acc,
         "temperature": cfg["temp_base"],
+        "speed": cfg["speed_rpm"],
         "timestamp": time.time()
     }
 

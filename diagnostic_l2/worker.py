@@ -1,7 +1,17 @@
 import time
 import json
+from diagnostic_l2.diagnostic_engine import DiagnosticEngine
 
 print("🔥 L2 WORKER VERSION = 2026-01-DEBUG-A 🔥")
+
+engine = DiagnosticEngine()
+
+fault_type = engine.diagnose(
+    features=job["l1_snapshot"]["features"],
+    state=job["early_fault_event"]["state"]
+)
+
+
 
 REQUIRED_KEYS = {
     "asset",

@@ -1,0 +1,37 @@
+BEARING_DEGRADATION:
+  WARNING:
+    priority: MEDIUM
+    action_code: INSPECTION_BRG
+    action_text:
+      en: "Inspect bearing condition, check lubrication, monitor vibration trend."
+      id: "Inspeksi bearing, cek pelumasan, pantau tren getaran."
+  ALARM:
+    priority: HIGH
+    action_code: REPLACE_BRG
+    action_text:
+      en: "Prepare bearing replacement. Risk of imminent failure."
+      id: "Siapkan penggantian bearing. Risiko kegagalan tinggi."
+
+IMBALANCE:
+  WARNING:
+    priority: LOW
+    action_code: FIELD_BALANCE
+    action_text:
+      en: "Schedule field balancing during next planned stop."
+      id: "Jadwalkan balancing saat shutdown terdekat."
+
+MISALIGNMENT:
+  WARNING:
+    priority: MEDIUM
+    action_code: ALIGNMENT_CHECK
+    action_text:
+      en: "Check shaft alignment and coupling condition."
+      id: "Periksa alignment poros dan kondisi coupling."
+
+LOOSENESS:
+  ALARM:
+    priority: HIGH
+    action_code: TIGHTEN_BASE
+    action_text:
+      en: "Check foundation bolts and structural looseness immediately."
+      id: "Segera periksa baut pondasi dan kelonggaran struktur."

@@ -16,6 +16,7 @@ from diagnostic_l2.cooldown import L2CooldownManager
 from diagnostic_l2.l2_queue import L2JobQueue
 from diagnostic_l2.worker import l2_worker
 
+from analytics.recommendation.rule_text import RecommendationEngine
 from utils.heartbeat import Heartbeat
 
 
@@ -24,6 +25,11 @@ def main():
     # LOAD CONFIG
     # =========================
     config = load_config()
+
+    # =========================
+    # RECOMMENDATION ENGINE
+    # =========================
+    recommendation_engine = RecommendationEngine()
 
     # =========================
     # HEARTBEAT
@@ -72,7 +78,7 @@ def main():
         alarm_persistence=config["early_fault"]["alarm_persistence"],
         hysteresis_clear=config["early_fault"]["hysteresis_clear"],
     )
-   
+
     publisher = MQTTPublisher(
         broker=config["mqtt"]["broker"],
         port=config["mqtt"]["port"],
@@ -107,14 +113,10 @@ def main():
             "timestamp": time.time(),
         }
 
-        # ---- TREND (RAW SPACE) ----
-        raw_trend = trend_detector.update(
-            asset_id,
-            point,
-            l1_features,
-        )
+        # ---- TREND ----
+        raw_trend = trend_detector.update(asset_id, point, l1_features)
 
-        # ---- BASELINE UPDATE ----
+        # ---- BASELINE ----
         baseline.update(
             asset_id,
             point,
@@ -123,11 +125,7 @@ def main():
         )
 
         # ---- PERSISTENCE ----
-        persistence = persistence_checker.update(
-            asset_id,
-            point,
-            raw_trend,
-        )
+        persistence = persistence_checker.update(asset_id, point, raw_trend)
 
         # ---- EARLY FAULT FSM ----
         heartbeat.mark_early_fault_exec()
@@ -138,51 +136,62 @@ def main():
             persistence=persistence,
         )
 
-        early_fault_event = {
-            "asset": asset_id,
-            "point": point,
-            "early_fault": early_fault.state.value in ("WARNING", "ALARM"),
-            "state": early_fault.state.value,
-            "confidence": early_fault.confidence,
-            "dominant_feature": early_fault.dominant_feature,
-            "timestamp": early_fault.timestamp,
-        }
-        
+        fault_type = early_fault.dominant_feature or "GENERAL_HEALTH"
+
+        # ---- RECOMMENDATION TEXT ----
+        recommendation_en = recommendation_engine.get_text(
+            fault_type=fault_type,
+            state=early_fault.state.value,
+            lang="en",
+        )
+
+        recommendation_id = recommendation_engine.get_text(
+            fault_type=fault_type,
+            state=early_fault.state.value,
+            lang="id",
+        )
+
         # ---- SCADA SNAPSHOT ----
         scada_payload = {
             "asset": asset_id,
             "point": point,
 
-            # --- ACC ---
+            # --- FEATURES ---
             "acceleration_rms_g": l1_features["acc_rms_g"],
             "acc_peak_g": l1_features["acc_peak_g"],
             "acc_hf_rms_g": l1_features["acc_hf_rms_g"],
             "crest_factor": l1_features["crest_factor"],
             "envelope_rms": l1_features["envelope_rms"],
-
-            # --- VELOCITY (ISO) ---
             "overall_vel_rms_mm_s": l1_features["overall_vel_rms_mm_s"],
 
-            # --- TEMP (EXT / OPTIONAL) ---
+            # --- EXT ---
             "temperature_c": raw_payload.get("temperature"),
 
             # --- FSM ---
             "early_fault": early_fault.state.value in ("WARNING", "ALARM"),
             "state": early_fault.state.value,
             "confidence": early_fault.confidence,
+            "fault_type": fault_type,
+
+            # --- RECOMMENDATION ---
+            "recommendation_en": recommendation_en,
+            "recommendation_id": recommendation_id,
 
             "timestamp": time.time(),
         }
 
-        # ---- PUBLISH SCADA ----   
+        # ---- PUBLISH SCADA ----
         publisher.publish_scada(asset_id, point, scada_payload)
 
-        # ---- PUBLISH EARLY FAULT ----
-        publisher.publish_early_fault(
-            asset_id,
-            point,
-            early_fault_event,
-        )
+        # ---- EARLY FAULT EVENT ----
+        publisher.publish_early_fault(asset_id, point, {
+            "asset": asset_id,
+            "point": point,
+            "state": early_fault.state.value,
+            "confidence": early_fault.confidence,
+            "fault_type": fault_type,
+            "timestamp": early_fault.timestamp,
+        })
 
         # ---- L2 TRIGGER ----
         if config["l2"]["enable"] and early_fault.state.value in ("WARNING", "ALARM"):
@@ -192,10 +201,9 @@ def main():
                     "point": point,
                     "window": window,
                     "l1_snapshot": l1_snapshot,
-                    "early_fault_event": early_fault_event,
+                    "early_fault_event": early_fault,
                     "publisher": publisher,
                 }
-
                 if l2_queue.enqueue(job):
                     heartbeat.mark_l2_exec()
                     l2_cooldown.mark_triggered(asset_id, point)
@@ -219,5 +227,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
 
