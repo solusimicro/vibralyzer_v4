@@ -35,6 +35,17 @@ class MQTTPublisher:
         """
         topic = f"vibration/scada/{asset}/{point}"
         self.client.publish(topic, json.dumps(payload))
+        
+    # =========================
+    # FINAL HEALTH ALARM (PHI-BASED)
+    # =========================
+    def publish_health_alarm(self, asset, point, payload: dict):
+        """
+        Final health alarm derived ONLY from Point Health Index (PHI)
+        This is the authoritative alarm for SCADA.
+        """
+        topic = f"vibration/health_alarm/{asset}/{point}"
+        self.client.publish(topic, json.dumps(payload))
 
     # =========================
     # SYSTEM HEARTBEAT

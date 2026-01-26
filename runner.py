@@ -1,6 +1,3 @@
-
-
-
 import time
 
 from raw_ingest.mqtt_listener import start_mqtt_listener
@@ -22,6 +19,32 @@ from diagnostic_l2.worker import l2_worker
 from analytics.recommendation.recommendation_engine import RecommendationEngine
 from utils.heartbeat import Heartbeat
 
+def phi_to_state(phi: float) -> str:
+    if phi >= 90:
+        return "NORMAL"
+    elif phi >= 75:
+        return "WATCH"
+    elif phi >= 55:
+        return "WARNING"
+    else:
+        return "ALARM"
+
+def compute_point_health_index(l1_features):
+    """
+    Point Health Index (0–100)
+    Deterministic, physics-based, SCADA-safe
+    """
+
+    vel = min(l1_features["overall_vel_rms_mm_s"] / 7.1, 1.0)
+    env = min(l1_features["envelope_rms"] / 0.35, 1.0)
+    crest = min(l1_features["crest_factor"] / 6.0, 1.0)
+
+    severity = 0.5 * vel + 0.3 * env + 0.2 * crest
+
+    # 100 = healthy, 0 = worst
+    phi = 100.0 * (1.0 - severity)
+
+    return round(max(min(phi, 100.0), 0.0), 1)
 
 def main():
     # =========================
@@ -130,8 +153,7 @@ def main():
         # ---- PERSISTENCE ----
         persistence = persistence_checker.update(asset_id, point, raw_trend)
 
-        # ---- EARLY FAULT FSM ----
-        heartbeat.mark_early_fault_exec()
+        # ---- EARLY FAULT FSM (INTERNAL EVIDENCE) ----
         early_fault = early_fault_fsm.update(
             asset=asset_id,
             point=point,
@@ -139,8 +161,15 @@ def main():
             persistence=persistence,
         )
 
-        fault_type = early_fault.dominant_feature or "GENERAL_HEALTH"
-        state = early_fault.state.value
+        # ---- POINT HEALTH INDEX (FINAL DECISION) ----
+        point_health_index = compute_point_health_index(l1_features)
+        state = phi_to_state(point_health_index)
+
+        # ---- FAULT TYPE RESOLUTION ----
+        if state in ("NORMAL", "WATCH"):
+            fault_type = "GENERAL_HEALTH"
+        else:
+            fault_type = early_fault.dominant_feature or "GENERAL_HEALTH"
 
         # ---- UNIFIED RECOMMENDATION ----
         recommendation = recommendation_engine.recommend(
@@ -164,14 +193,21 @@ def main():
 
             # --- EXT ---
             "temperature_c": raw_payload.get("temperature"),
+            
+            # --- SUPPORTING FEATURES ---
+            "energy_low": l1_features["energy_low"],
+            "energy_high": l1_features["energy_high"],
 
-            # --- FSM ---
-            "early_fault": state in ("WARNING", "ALARM"),
-            "state": state,
-            "confidence": early_fault.confidence,
+            # --- FINAL HEALTH ---
+            "point_health_index": point_health_index,
+            "state": state,   # 🔴 ONLY FROM PHI
+
+            # --- CONTEXT (ENGINEER ONLY) ---
             "fault_type": fault_type,
+            "confidence": early_fault.confidence,
+            "fsm_state": early_fault.state.value,
 
-            # --- RECOMMENDATION (OBJECT) ---
+            # --- RECOMMENDATION ---
             "recommendation": recommendation,
 
             "timestamp": time.time(),
@@ -187,10 +223,23 @@ def main():
             {
                 "asset": asset_id,
                 "point": point,
-                "state": state,
+                "fsm_state": early_fault.state.value,
                 "confidence": early_fault.confidence,
                 "fault_type": fault_type,
                 "timestamp": early_fault.timestamp,
+            },
+        )
+        
+        # ---- FINAL HEALTH ALARM ----
+        publisher.publish_health_alarm(
+            asset_id,
+            point,
+            {
+                "asset": asset_id,
+                "point": point,
+                "state": state,  # PHI-based
+                "point_health_index": point_health_index,
+                "timestamp": time.time(),
             },
         )
 
@@ -203,10 +252,15 @@ def main():
                     "window": window,
                     "l1_snapshot": l1_snapshot,
                     "early_fault_event": {
-                        "state": state,
+                        "fsm_state": early_fault.state.value,
                         "fault_type": fault_type,
                         "confidence": early_fault.confidence,
                     },
+                    "health_event": {
+                        "state": state,  # PHI-based
+                        "point_health_index": point_health_index,
+                    },
+
                     "publisher": publisher,
                 }
                 if l2_queue.enqueue(job):
@@ -232,3 +286,8 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# NOTE:
+# FSM is NOT allowed to set SCADA alarm state.
+# FSM provides evidence only.
+# Final alarm/state MUST be derived from Point Health Index (PHI).
