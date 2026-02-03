@@ -1,0 +1,78 @@
+version: 1.0
+profile: vibralyzer_scada_profile
+protocol: sparkplug_b
+
+metrics:
+
+  # =========================
+  # HEALTH (FINAL AUTHORITY)
+  # =========================
+  PHI:
+    type: float
+    unit: percent
+    description: Point Health Index (0–100)
+
+  STATE:
+    type: int
+    enum:
+      0: NORMAL
+      1: WATCH
+      2: WARNING
+      3: ALARM
+    description: Final health state (PHI-based)
+
+  # =========================
+  # CORE VIBRATION FEATURES
+  # =========================
+  OVERALL_VEL_RMS:
+    type: float
+    unit: mm_per_s
+    description: Overall vibration velocity RMS
+
+  ACC_RMS:
+    type: float
+    unit: g
+    description: Acceleration RMS
+
+  ENVELOPE_RMS:
+    type: float
+    unit: g
+    description: Envelope RMS (bearing)
+
+  CREST_FACTOR:
+    type: float
+    unit: ratio
+    description: Crest factor
+
+  TEMPERATURE:
+    type: float
+    unit: celsius
+    description: Bearing or casing temperature
+
+  # =========================
+  # DIAGNOSTIC CONTEXT (ENUM)
+  # =========================
+  FAULT_CODE:
+    type: int
+    description: Dominant fault code (enum)
+
+  ACTION_CODE:
+    type: int
+    description: Recommended maintenance action
+
+  CONFIDENCE:
+    type: float
+    unit: ratio
+    description: Diagnostic confidence (0–1)
+
+  # =========================
+  # EVENT SNAPSHOT
+  # =========================
+  LAST_EVENT_CODE:
+    type: int
+    description: Last diagnostic event code
+
+  LAST_EVENT_TS:
+    type: int64
+    unit: epoch_sec
+    description: Timestamp of last event

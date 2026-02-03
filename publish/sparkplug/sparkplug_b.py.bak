@@ -1,0 +1,3 @@
+﻿# publish/sparkplug/sparkplug_b.py
+# Shim untuk kompatibilitas import: re-export dari sparkplug_b_pb2
+from .sparkplug_b_pb2 import *
