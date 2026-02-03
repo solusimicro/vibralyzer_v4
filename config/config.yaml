@@ -1,27 +1,19 @@
+sparkplug:
+  enable: true
+  group_id: "PLANT_ALFA"
+  edge_node_id: "VIBRALYZER_V4_GW"
+
+mqtt:
+  broker: "localhost"
+  port: 1883
+  raw_topic: "raw/vibration/+"
+
 points:
-  p1mt:
-    type: motor
-    rpm: 2980
-  p2mt:
-    type: motor
-    rpm: 2980
-
-  p3gx:
-    type: gearbox
-    rpm: 1480
-  p4gx:
-    type: gearbox
-    rpm: 1480
-  p5gx:
-    type: gearbox
-    rpm: 1480
-  p6gx:
-    type: gearbox
-    rpm: 1480
-
-  p7pp:
-    type: pump
-    rpm: 2980
-  p8pp:
-    type: pump
-    rpm: 2980
+  p1mt: { type: "motor", rpm: 2980 }
+  p2mt: { type: "motor", rpm: 2980 }
+  p3gx: { type: "gearbox", rpm: 1480 }
+  p4gx: { type: "gearbox", rpm: 1480 }
+  p5gx: { type: "gearbox", rpm: 1480 }
+  p6gx: { type: "gearbox", rpm: 1480 }
+  p7pp: { type: "pump", rpm: 2980 }
+  p8pp: { type: "pump", rpm: 2980 }
