@@ -1,0 +1,28 @@
+overall_vel_rms_mm_s:
+  datatype: float
+  sparkplug_type: Float
+  engineering_unit: mm/s
+  description: Overall velocity RMS
+
+acceleration_rms_g:
+  datatype: float
+  sparkplug_type: Float
+  engineering_unit: g
+
+temperature_c:
+  datatype: float
+  sparkplug_type: Float
+  engineering_unit: °C
+
+early_fault:
+  datatype: bool
+  sparkplug_type: Boolean
+
+state:
+  datatype: string
+  sparkplug_type: String
+
+confidence:
+  datatype: float
+  sparkplug_type: Float
+

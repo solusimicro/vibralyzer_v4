@@ -1,0 +1,140 @@
+# .gptignore
+# ----------------------------------------------
+# Files and folders listed here will NOT be
+# copied when using Copy For GPT.
+#
+# Similar to .gitignore, one rule per line.
+#
+# Paths are relative to the project root.
+# ----------------------------------------------
+# Your own ignored files & folders & extensions
+# ----------------------------------------------
+
+
+
+
+
+# -----------------------------
+# Dependencies
+# -----------------------------
+node_modules
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# -----------------------------
+# Build / output
+# -----------------------------
+dist
+build
+.out
+.next
+.cache
+coverage
+.nyc_output
+
+# -----------------------------
+# Environment
+# -----------------------------
+.env
+.env.*
+
+# -----------------------------
+# Logs / maps
+# -----------------------------
+*.log
+*.map
+
+# -----------------------------
+# VCS
+# -----------------------------
+.git
+.gitignore
+.gitattributes
+
+# -----------------------------
+# VS Code / tooling
+# -----------------------------
+.vscode
+.vscode/**
+.vscodeignore
+.vscode-test.mjs
+vsc-extension-quickstart.md
+eslint.config.mjs
+jsconfig.json
+
+# -----------------------------
+# Tests (optional, noise for GPT)
+# -----------------------------
+test
+test/**
+tests
+tests/**
+
+# -----------------------------
+# Images
+# -----------------------------
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.webp
+*.avif
+*.bmp
+*.tiff
+
+# -----------------------------
+# Audio / Video
+# -----------------------------
+*.mp3
+*.wav
+*.flac
+*.ogg
+*.m4a
+*.mp4
+*.avi
+*.mov
+*.mkv
+*.webm
+
+# -----------------------------
+# Fonts
+# -----------------------------
+*.woff
+*.woff2
+*.ttf
+*.otf
+*.eot
+
+# -----------------------------
+# Archives
+# -----------------------------
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+*.tgz
+*.bz2
+
+# -----------------------------
+# Binaries / executables
+# -----------------------------
+*.vsix
+*.exe
+*.dll
+*.so
+*.dylib
+*.app
+*.msi
+*.bin
+
+# -----------------------------
+# Documents / data (binary)
+# -----------------------------
+*.pdf
+*.db
+*.sqlite
+*.sqlite3
+*.dat

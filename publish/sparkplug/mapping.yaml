@@ -1,0 +1,122 @@
+#publish/sparkplug/mapping.yaml
+# =====================================================
+# VIBRATION – TIME DOMAIN
+# =====================================================
+
+overall_vel_rms_mm_s:
+  name: Vibration/Velocity/RMS
+  sparkplug_type: Float
+  engineering_unit: mm/s
+  description: Overall vibration velocity RMS
+
+acc_rms_g:
+  name: Vibration/Acceleration/RMS
+  sparkplug_type: Float
+  engineering_unit: g
+  description: Acceleration RMS
+
+acc_peak_g:
+  name: Vibration/Acceleration/Peak
+  sparkplug_type: Float
+  engineering_unit: g
+  description: Peak acceleration
+
+acc_hf_rms_g:
+  name: Vibration/Acceleration/HF_RMS
+  sparkplug_type: Float
+  engineering_unit: g
+  description: High frequency acceleration RMS
+
+envelope_rms:
+  name: Vibration/Envelope/RMS
+  sparkplug_type: Float
+  engineering_unit: g
+  description: Envelope RMS for bearing detection
+
+crest_factor:
+  name: Vibration/CrestFactor
+  sparkplug_type: Float
+  engineering_unit: "-"
+  description: Crest factor (peak / RMS)
+
+# =====================================================
+# VIBRATION – ENERGY / SPECTRUM (OPTIONAL)
+# =====================================================
+
+energy_low:
+  name: Vibration/Energy/Low
+  sparkplug_type: Float
+  engineering_unit: "-"
+  description: Low band vibration energy
+
+energy_high:
+  name: Vibration/Energy/High
+  sparkplug_type: Float
+  engineering_unit: "-"
+  description: High band vibration energy
+
+# =====================================================
+# PROCESS / AUXILIARY
+# =====================================================
+
+temperature_c:
+  name: Process/Temperature
+  sparkplug_type: Float
+  engineering_unit: °C
+  description: Bearing or casing temperature
+
+rpm:
+  name: Process/RPM
+  sparkplug_type: Int32
+  engineering_unit: rpm
+  description: Rotational speed
+
+# =====================================================
+# HEALTH & STATE (SCADA AUTHORITY)
+# =====================================================
+
+point_health_index:
+  name: Health/Index
+  sparkplug_type: Float
+  engineering_unit: "%"
+  description: Physics-based point health index (0–100)
+
+health_state:
+  name: Health/State
+  sparkplug_type: String
+  description: Final SCADA state (NORMAL, WATCH, WARNING, ALARM)
+
+# =====================================================
+# EARLY FAULT – EVIDENCE ONLY (NO ALARM)
+# =====================================================
+
+early_fault_detected:
+  name: Fault/Early/Detected
+  sparkplug_type: Boolean
+  description: Early fault detected by trend and persistence
+
+early_fault_type:
+  name: Fault/Early/Type
+  sparkplug_type: String
+  description: Dominant early fault type
+
+early_fault_confidence:
+  name: Fault/Early/Confidence
+  sparkplug_type: Float
+  engineering_unit: "%"
+  description: Confidence level of early fault detection
+
+# =====================================================
+# L2 ANALYTICS ENGINE (DEVICE: L2_ENGINE)
+# =====================================================
+
+l2_alive:
+  name: System/L2/Alive
+  sparkplug_type: Boolean
+  description: L2 analytics engine heartbeat
+
+l2_last_exec_ts:
+  name: System/L2/LastExecTS
+  sparkplug_type: Int64
+  engineering_unit: epoch
+  description: Last execution timestamp of L2 analytics
