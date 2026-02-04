@@ -1,89 +1,78 @@
+# runner.py
 import time
 import logging
+import json
+import paho.mqtt.client as mqtt
 
-from diagnostic_l2.worker import l2_worker
+from publish.sparkplug.metric_mapper import MetricMapper
 from publish.sparkplug.sparkplug_publisher import SparkplugPublisher
+from diagnostic_l2.worker import l2_worker
+from config.config_loader import load_config
 
-log = logging.getLogger("L2_RUNNER")
 logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("L2_RUNNER")
 
+# ---------------------------
+# CONFIG
+# ---------------------------
+mapping_cfg = load_config("config/sparkplug_mapping.yaml")
+metric_mapper = MetricMapper(mapping_cfg)
 
-class L2Runner:
-    def __init__(self, publisher: SparkplugPublisher):
-        self.publisher = publisher
+BROKER = "localhost"
+PORT = 1883
+RAW_TOPIC = "vibration/+/+"  # listen to all vibration points
 
-    def run_job(self, job: dict):
-        """
-        Runner = orchestrator only
-        - Call worker
-        - Validate result
-        - Publish if valid
-        """
+publisher = SparkplugPublisher(broker=BROKER, port=PORT)
 
-        result = l2_worker(job)
+# ---------------------------
+# MQTT CALLBACKS
+# ---------------------------
+def on_connect(client, userdata, flags, rc):
+    logger.info(f"Connected to broker {BROKER}:{PORT} rc={rc}")
+    client.subscribe(RAW_TOPIC)
 
-        if not result:
-            log.warning("⚠️ L2 result is empty")
-            return
+def on_message(client, userdata, msg):
+    try:
+        payload = json.loads(msg.payload.decode())
+        asset = payload.get("asset")
+        point = payload.get("point")
 
-        asset = result.get("asset")
-        point = result.get("point")
+        logger.info(f"🔍 L2 processing | asset={asset} point={point}")
 
-        if not asset or not point:
-            log.error("❌ Missing asset / point in L2 result")
-            return
+        # Run L2 worker
+        l2_values = l2_worker(payload)
+        
+        # Build Sparkplug metrics
+        metrics = metric_mapper.build_runtime_metrics(l2_values)
 
-        metrics = result.get("metrics")
-        if not metrics:
-            log.info(f"ℹ️ No metrics to publish for {asset}:{point}")
-            return
+        # Publish
+        topic = f"vibration/{asset}/{point}"
+        publisher.publish_ddatas(topic, metrics)
 
-        # ✅ SINGLE responsibility: publish Sparkplug DDATA
-        self.publisher.publish_ddata(
-            asset=asset,
-            point=point,
-            metrics=metrics,
-        )
+        logger.info(f"✅ L2 result ready | asset={asset} point={point} keys={list(l2_values.keys())}")
+    except Exception as e:
+        logger.exception(f"Error processing message: {e}")
 
-        log.info(
-            f"📡 Published DDATA | asset={asset} point={point} metrics={len(metrics)}"
-        )
+# ---------------------------
+# MQTT CLIENT
+# ---------------------------
+client = mqtt.Client()
+client.on_connect = on_connect
+client.on_message = on_message
 
+client.connect(BROKER, PORT)
+client.loop_start()
 
-# ==================================================
-# ENTRYPOINT (example usage / service loop)
-# ==================================================
-if __name__ == "__main__":
-    publisher = SparkplugPublisher(
-        broker="localhost",
-        port=1883,
-        group_id="VIBRA",
-        edge_node="EDGE_01",
-    )
-
-    runner = L2Runner(publisher)
-
-    heartbeat_counter = 0
-
+# Keep runner alive
+try:
     while True:
-        # contoh dummy job
-        job = {
-            "asset": "PUMP_01",
-            "point": "DE",
-            "window": 5,
-            "early_fault_event": True,
-            "publisher": publisher,
-        }
+        time.sleep(1)
+except KeyboardInterrupt:
+    logger.info("Shutting down runner...")
+    client.loop_stop()
+    client.disconnect()
 
-        runner.run_job(job)
 
-        # ==========================================
-        # L2 HEARTBEAT (TeslaSCADA health metric)
-        # ==========================================
-        heartbeat_counter += 1
-        if heartbeat_counter % 2 == 0:
-            # tiap 10 detik (sleep 5)
-            publisher.publish_l2_alive()
-            log.debug("💓 L2 heartbeat published")
 
-        time.sleep(5)
+
+
