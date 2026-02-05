@@ -1,18 +1,29 @@
-import logging
-logger = logging.getLogger("L2_WORKER")
+from diagnostic_l2.diagnostic_engine import DiagnosticEngine
+from diagnostic_l2 import fault_rules, fallback, cooldown
+from diagnostic_l2.feature_extractor import extract_features
 
-def l2_worker(job: dict):
-    asset = job["asset"]
-    point = job["point"]
+engine = DiagnosticEngine()
 
-    logger.info(f"🔍 L2 processing | asset={asset} point={point}")
+def l2_worker(job: dict) -> dict:
+    # L1
+    features = extract_features(job)
 
-    # contoh result
-    result = {
-        "early_fault": True,
-        "state": "ALARM",
-        "confidence": 0.95
+    l1_snapshot = {
+        "asset": job["asset"],
+        "point": job["point"],
+        "features": features,
     }
 
-    logger.info(f"✅ L2 result ready | asset={asset} point={point} keys={list(result.keys())}")
+    # L2
+    result = engine.run(l1_snapshot)
+
+    fault = fault_rules.evaluate(result, features)
+    if fault:
+        result.update(fault)
+
+    fallback.apply(result)
+    cooldown.apply(result, job["asset"], job["point"])
+
     return result
+
+
