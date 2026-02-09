@@ -19,30 +19,33 @@ class InterpretationEngine:
         if dominant == "energy_high":
             supporting.append({
                 "name": "energy_high",
-                "value": l1_features["energy_high"],
+                "value": l1_features.get("energy_high"),
                 "unit": "g²",
-                "trend": trend.feature_trend("energy_high"),
+                "trend_level": trend.level,
             })
 
             supporting.append({
                 "name": "envelope_rms",
-                "value": l1_features["envelope_rms"],
+                "value": l1_features.get("envelope_rms"),
                 "unit": "g",
-                "trend": trend.feature_trend("envelope_rms"),
+                "trend_level": trend.level,
             })
 
             suspected_faults = [
                 "Bearing outer race defect",
-                "Poor lubrication"
+                "Poor lubrication",
             ]
 
-            component = "Bearing – Drive End"
-            summary = "Dominasi energi frekuensi tinggi mengarah ke degradasi bearing."
+            component = f"Bearing – {point}"
+            summary = (
+                "High-frequency energy dominates vibration spectrum, "
+                "indicating bearing-related degradation."
+            )
 
         else:
             suspected_faults = ["General mechanical degradation"]
             component = "Rotating assembly"
-            summary = "Indikasi degradasi mekanis umum."
+            summary = "General mechanical degradation detected."
 
         return {
             "asset": asset,
@@ -55,7 +58,8 @@ class InterpretationEngine:
                 "supporting_features": supporting,
                 "reasoning": [
                     f"Dominant feature: {dominant}",
-                    f"PHI at {phi}",
+                    f"Trend level: {trend.level}",
+                    f"PHI: {phi}",
                 ],
                 "confidence": early_fault.confidence,
             },

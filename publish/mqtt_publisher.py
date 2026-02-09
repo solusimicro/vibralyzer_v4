@@ -1,139 +1,92 @@
 import json
-import logging
+import time
 import paho.mqtt.client as mqtt
-
-
-log = logging.getLogger(__name__)
 
 
 class MQTTPublisher:
     """
-    Centralized MQTT publisher.
-    All outbound messages MUST go through this class.
+    MQTT Publisher (ISO-Purist)
+
+    Responsibility:
+    - Publish FINAL authoritative signals only
+    - NO business logic
+    - NO interpretation
+    - NO FSM knowledge
+    - Flat JSON only (SCADA-safe)
     """
 
-    def __init__(self, broker: str, port: int):
-        self.broker = broker
-        self.port = port
+    def __init__(self, broker, port, base_topic="vibration"):
+        self.base_topic = base_topic
 
         self.client = mqtt.Client()
-        self.client.connect(self.broker, self.port)
+        self.client.connect(broker, port)
         self.client.loop_start()
 
-        log.info(
-            "[MQTT] Publisher connected to %s:%s",
-            self.broker,
-            self.port,
+    # =========================================================
+    # INTERNAL
+    # =========================================================
+    def _publish(self, topic, payload, qos=1, retain=False):
+        self.client.publish(
+            topic,
+            json.dumps(payload),
+            qos=qos,
+            retain=retain,
         )
 
-    # ==================================================
-    # LOW LEVEL (SINGLE SOURCE OF TRUTH)
-    # ==================================================
-    def _publish(self, topic: str, payload: dict):
+    # =========================================================
+    # OPTIONAL – ENGINEERING VISIBILITY
+    # =========================================================
+    def publish_l1_features(self, asset, point, payload):
         """
-        Internal publish method.
-        Always JSON, always fire-and-forget.
+        Optional.
+        Engineering / analytics only.
+        Disable in production SCADA if needed.
         """
-        try:
-            self.client.publish(topic, json.dumps(payload))
-        except Exception as e:
-            log.exception(
-                "[MQTT] Publish failed | topic=%s | err=%s",
-                topic,
-                e,
-            )
-
-    # ==================================================
-    # EARLY FAULT (FSM / EVIDENCE ONLY)
-    # ==================================================
-    def publish_early_fault(self, asset: str, point: str, payload: dict):
-        """
-        FSM state, confidence, dominant feature.
-        NOT an alarm.
-        """
-        topic = f"vibration/early_fault/{asset}/{point}"
+        topic = f"{self.base_topic}/l1/{asset}/{point}"
         self._publish(topic, payload)
 
-    # =========================
-    # INTERPRETATION (ENGINEER)
-    # =========================
-    def publish_interpretation(self, asset, point, payload: dict):
-        topic = f"vibration/interpretation/{asset}/{point}"
-        self.client.publish(topic, json.dumps(payload))
-        
-    # ==================================================
-    # L2 DIAGNOSTIC (ROOT CAUSE)
-    # ==================================================
-    def publish_l2_result(self, asset: str, point: str, payload: dict):
+    # =========================================================
+    # FINAL ALARM (SINGLE SOURCE OF TRUTH)
+    # =========================================================
+    def publish_final_alarm(self, asset, point, payload):
         """
-        Detailed root cause analysis.
-        Engineer-facing.
+        FINAL ALARM / RECOMMENDATION
+        This is the ONLY alarm SCADA should consume.
         """
-        topic = f"vibration/l2_result/{asset}/{point}"
-        self._publish(topic, payload)
+        topic = f"{self.base_topic}/final_alarm/{asset}/{point}"
 
-    # ==================================================
-    # SCADA REALTIME VALUES (DISPLAY ONLY)
-    # ==================================================
-    def publish_scada(self, asset: str, point: str, payload: dict):
-        """
-        Final SCADA-facing topic.
+        # ISO guard: mandatory fields
+        final_payload = {
+            "asset": asset,
+            "point": point,
+            "state": payload["state"],            # NORMAL | WATCH | WARNING | ALARM
+            "phi": round(payload["phi"], 2),      # 0–100
+            "action_code": payload.get("action_code"),
+            "priority": payload.get("priority"),
+            "text": payload.get("text"),
+            "timestamp": payload.get("timestamp", time.time()),
+        }
 
-        PRINCIPLE:
-        - numeric values only
-        - deterministic
-        - no diagnosis logic
+        self._publish(topic, final_payload, retain=True)
 
-        DO NOT change field names without SCADA approval.
+    # =========================================================
+    # HEARTBEAT
+    # =========================================================
+    def publish_heartbeat(self, payload):
         """
-        topic = f"vibration/scada/{asset}/{point}"
-        self._publish(topic, payload)
+        System liveness only.
+        """
+        topic = f"{self.base_topic}/heartbeat"
+        self._publish(topic, payload, qos=0, retain=False)
 
-    # ==================================================
-    # FINAL HEALTH ALARM (PHI-BASED)
-    # ==================================================
-    def publish_health_alarm(self, asset: str, point: str, payload: dict):
-        """
-        Authoritative alarm.
-        Derived ONLY from Point Health Index (PHI).
-        """
-        topic = f"vibration/health_alarm/{asset}/{point}"
-        self._publish(topic, payload)
+    # =========================================================
+    # SHUTDOWN
+    # =========================================================
+    def stop(self):
+        self.client.loop_stop()
+        self.client.disconnect()
 
-    # ==================================================
-    # RECOMMENDATION (WHAT TO DO)
-    # ==================================================
-    def publish_recommendation(self, asset: str, point: str, payload: dict):
-        """
-        Actionable recommendation.
-        Human-readable.
-        """
-        topic = f"vibration/recommendation/{asset}/{point}"
-        self._publish(topic, payload)
 
-    # ==================================================
-    # SYSTEM HEARTBEAT
-    # ==================================================
-    def publish_heartbeat(self, payload: dict):
-        """
-        System liveness & performance.
-        """
-        topic = "vibration/heartbeat"
-        self._publish(topic, payload)
-
-    # ==================================================
-    # GENERIC (INTERNAL / DEBUG ONLY)
-    # ==================================================
-    def publish_json(self, topic: str, payload: dict):
-        """
-        Generic publisher.
-
-        ⚠️ WARNING:
-        - Not for SCADA
-        - Not for operators
-        - Debug / internal only
-        """
-        self._publish(topic, payload)
 
 
 
