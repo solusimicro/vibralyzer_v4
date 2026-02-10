@@ -1,59 +1,38 @@
 import time
-from venv import logger
+from venv import logger  # noqa: F401
 
-# === INGEST ===
 from raw_ingest.mqtt_listener import start_mqtt_listener
-
-# === CORE ===
 from core.ring_buffer import RingBufferManager
 from core.l1_feature_pipeline import L1FeaturePipeline
 
-# === EARLY FAULT (INTERNAL EVIDENCE) ===
 from early_fault.trend_detector import TrendDetector
 from early_fault.persistence import PersistenceChecker
 from early_fault.scoring import EarlyFaultFSM
 from early_fault.baseline import AdaptiveBaseline
 
-# === HEALTH AUTHORITY ===
-from health.point_health_index import compute_phi
-from health.state_mapping import phi_to_state
-
-# === PUBLISH ===
 from publish.mqtt_publisher import MQTTPublisher
-
-# === CONFIG ===
 from config.config_loader import load_config
 
-# === L2 ASYNC ===
 from diagnostic_l2.cooldown import L2CooldownManager
 from diagnostic_l2.l2_queue import L2JobQueue
 from diagnostic_l2.worker import l2_worker
 
-# === SYSTEM ===
+from analytics.recommendation.recommendation_engine import RecommendationEngine
 from utils.heartbeat import Heartbeat
 
+# === ISO Health Layer ===
+from health.point_health_index import compute_phi
+from health.state_mapping import phi_to_state
 
-# ============================================================
-# RUNNER — ISO PURIST
-# ============================================================
 
 def main():
     config = load_config()
 
-    # ----------------------------
-    # SYSTEM
-    # ----------------------------
     heartbeat = Heartbeat(service_name="vibralyzer")
     last_heartbeat_ts = time.time()
     HEARTBEAT_INTERVAL = config.get("heartbeat", {}).get("interval_sec", 10)
 
-    # ----------------------------
-    # CORE PIPELINE
-    # ----------------------------
-    ring_buffers = RingBufferManager(
-        window_size=config["raw"]["window_size"]
-    )
-
+    ring_buffers = RingBufferManager(window_size=config["raw"]["window_size"])
     l1_pipeline = L1FeaturePipeline(
         fs=config["l1_feature"]["sampling_rate"],
         rpm=config["l1_feature"]["rpm_default"],
@@ -66,7 +45,6 @@ def main():
 
     trend_detector = TrendDetector()
     persistence_checker = PersistenceChecker()
-
     early_fault_fsm = EarlyFaultFSM(
         watch_persistence=config["early_fault"]["watch_persistence"],
         warning_persistence=config["early_fault"]["warning_persistence"],
@@ -79,20 +57,14 @@ def main():
         port=config["mqtt"]["port"],
     )
 
-    # ----------------------------
-    # L2 ASYNC
-    # ----------------------------
+    recommendation_engine = RecommendationEngine()
     l2_cooldown = L2CooldownManager(
         warning_sec=config["l2"]["cooldown_warning_sec"],
         alarm_sec=config["l2"]["cooldown_alarm_sec"],
     )
-
     l2_queue = L2JobQueue(maxsize=10)
     l2_queue.start(l2_worker)
 
-    # ----------------------------
-    # RAW CALLBACK
-    # ----------------------------
     def on_raw_data(asset_id, point, raw_payload):
         nonlocal last_heartbeat_ts
 
@@ -102,75 +74,81 @@ def main():
         if not ring_buffers.is_window_ready(asset_id, point):
             return
 
-        # ---- WINDOW ----
         window = ring_buffers.get_window(asset_id, point)
-
-        # ---- L1 FEATURES ----
         heartbeat.mark_l1_exec()
         l1_features = l1_pipeline.compute(window)
 
-        # ---- BASELINE / TREND ----
-        raw_trend = trend_detector.update(asset_id, point, l1_features)
-
-        baseline.update(
-            asset_id,
-            point,
-            l1_features,
-            allow_update=(raw_trend.level == "NORMAL"),
-        )
-
-        persistence = persistence_checker.update(asset_id, point, raw_trend)
-
-        # ---- FSM (EVIDENCE ONLY, INTERNAL) ----
-        early_fault = early_fault_fsm.update(
-            asset=asset_id,
-            point=point,
-            trend=raw_trend,
-            persistence=persistence,
-        )
-
-        # ---- HEALTH AUTHORITY ----
-        phi = compute_phi(l1_features)
-        state = phi_to_state(phi)
-
-        # ---- FINAL ALARM (RECOMMENDATION) ----
-        publisher.publish_final_alarm(
+        # --- SCADA minimal L1 publish ---
+        publisher.publish_l1(
             asset_id,
             point,
             {
-                "asset": asset_id,
-                "point": point,
-                "state": state,
-                "phi": phi,
+                "acceleration_rms_g": l1_features["acc_rms_g"],
+                "overall_vel_rms_mm_s": l1_features["overall_vel_rms_mm_s"],
+                "crest_factor": l1_features["crest_factor"],
+                "temperature_c": raw_payload.get("temperature"),
                 "timestamp": time.time(),
             },
         )
 
-        # ---- L2 TRIGGER (INTERNAL) ----
+        # --- BASELINE / TREND / FSM (internal) ---
+        raw_trend = trend_detector.update(asset_id, point, l1_features)
+        baseline.update(asset_id, point, l1_features, allow_update=(raw_trend.level == "NORMAL"))
+        persistence = persistence_checker.update(asset_id, point, raw_trend)
+        early_fault = early_fault_fsm.update(asset=asset_id, point=point, trend=raw_trend, persistence=persistence)
+
+        # --- ISO Health / PHI ---
+        phi = compute_phi(l1_features)
+        state = phi_to_state(phi)
+        fault_type = "GENERAL_HEALTH" if state in ("NORMAL", "WATCH") else early_fault.dominant_feature or "GENERAL_HEALTH"
+
+        # --- Publish Health / PHI ---
+        publisher.publish_health(
+            asset_id,
+            point,
+            {
+                "point_health_index": phi,
+                "state": state,
+                "fault_type": fault_type,
+                "confidence": early_fault.confidence,
+                "fsm_state": early_fault.state.value,
+                "timestamp": time.time(),
+            },
+        )
+
+        # --- L2 Async Trigger (internal only) ---
         if config["l2"]["enable"] and state in ("WARNING", "ALARM"):
             if l2_cooldown.can_trigger(asset_id, point, state):
                 l2_queue.enqueue({
                     "asset": asset_id,
                     "point": point,
-                    "l1_snapshot": {
-                        "asset": asset_id,
-                        "point": point,
-                        "features": l1_features,
-                        "timestamp": time.time(),
-                    },
+                    "l1_snapshot": l1_features,
                     "publisher": publisher,
                 })
                 l2_cooldown.mark_triggered(asset_id, point)
 
-        # ---- HEARTBEAT ----
+        # --- Recommendation / Final Alarm ---
+        recommendation = recommendation_engine.recommend(fault_type=fault_type, state=state, lang="id")
+        publisher.publish_recommendation(
+            asset_id,
+            point,
+            {
+                "state": state,
+                "fault_type": fault_type,
+                "rec_level": recommendation.get("level"),
+                "rec_priority": recommendation.get("priority"),
+                "rec_action_code": recommendation.get("action_code"),
+                "rec_text": recommendation.get("text"),
+                "timestamp": time.time(),
+            },
+        )
+
+        # --- Heartbeat ---
         now = time.time()
         if now - last_heartbeat_ts >= HEARTBEAT_INTERVAL:
             publisher.publish_heartbeat(heartbeat.snapshot())
             last_heartbeat_ts = now
 
-    # ----------------------------
-    # START INGEST
-    # ----------------------------
     start_mqtt_listener(
         callback=on_raw_data,
         broker=config["mqtt"]["broker"],
@@ -180,11 +158,7 @@ def main():
 
 
 if __name__ == "__main__":
-    try:
-        logger.info("🚀 Vibralyzer Runner started (ISO-PURIST)")
-        main()
-    except KeyboardInterrupt:
-        logger.info("🛑 Runner stopped by user")
-    except Exception:
-        logger.exception("❌ Fatal runner error")
+    main()
+
+
 

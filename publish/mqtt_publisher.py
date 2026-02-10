@@ -1,90 +1,37 @@
 import json
-import time
+import time  # noqa: F401
 import paho.mqtt.client as mqtt
 
 
 class MQTTPublisher:
-    """
-    MQTT Publisher (ISO-Purist)
-
-    Responsibility:
-    - Publish FINAL authoritative signals only
-    - NO business logic
-    - NO interpretation
-    - NO FSM knowledge
-    - Flat JSON only (SCADA-safe)
-    """
-
-    def __init__(self, broker, port, base_topic="vibration"):
-        self.base_topic = base_topic
-
+    def __init__(self, broker: str, port: int = 1883):
         self.client = mqtt.Client()
         self.client.connect(broker, port)
         self.client.loop_start()
 
-    # =========================================================
-    # INTERNAL
-    # =========================================================
-    def _publish(self, topic, payload, qos=1, retain=False):
-        self.client.publish(
-            topic,
-            json.dumps(payload),
-            qos=qos,
-            retain=retain,
-        )
+    def publish(self, topic: str, payload: dict):
+        self.client.publish(topic, json.dumps(payload), qos=1)
 
-    # =========================================================
-    # OPTIONAL – ENGINEERING VISIBILITY
-    # =========================================================
-    def publish_l1_features(self, asset, point, payload):
-        """
-        Optional.
-        Engineering / analytics only.
-        Disable in production SCADA if needed.
-        """
-        topic = f"{self.base_topic}/l1/{asset}/{point}"
-        self._publish(topic, payload)
+    # --- Minimal L1 Feature ---
+    def publish_l1(self, asset: str, point: str, payload: dict):
+        topic = f"vibration/l1/{asset}/{point}"
+        self.publish(topic, payload)
 
-    # =========================================================
-    # FINAL ALARM (SINGLE SOURCE OF TRUTH)
-    # =========================================================
-    def publish_final_alarm(self, asset, point, payload):
-        """
-        FINAL ALARM / RECOMMENDATION
-        This is the ONLY alarm SCADA should consume.
-        """
-        topic = f"{self.base_topic}/final_alarm/{asset}/{point}"
+    # --- PHI / State ---
+    def publish_health(self, asset: str, point: str, payload: dict):
+        topic = f"vibration/health/{asset}/{point}"
+        self.publish(topic, payload)
 
-        # ISO guard: mandatory fields
-        final_payload = {
-            "asset": asset,
-            "point": point,
-            "state": payload["state"],            # NORMAL | WATCH | WARNING | ALARM
-            "phi": round(payload["phi"], 2),      # 0–100
-            "action_code": payload.get("action_code"),
-            "priority": payload.get("priority"),
-            "text": payload.get("text"),
-            "timestamp": payload.get("timestamp", time.time()),
-        }
+    # --- Recommendation / Final Alarm ---
+    def publish_recommendation(self, asset: str, point: str, payload: dict):
+        topic = f"vibration/recommendation/{asset}/{point}"
+        self.publish(topic, payload)
 
-        self._publish(topic, final_payload, retain=True)
+    # --- Heartbeat ---
+    def publish_heartbeat(self, payload: dict):
+        topic = "vibration/system/heartbeat"
+        self.publish(topic, payload)
 
-    # =========================================================
-    # HEARTBEAT
-    # =========================================================
-    def publish_heartbeat(self, payload):
-        """
-        System liveness only.
-        """
-        topic = f"{self.base_topic}/heartbeat"
-        self._publish(topic, payload, qos=0, retain=False)
-
-    # =========================================================
-    # SHUTDOWN
-    # =========================================================
-    def stop(self):
-        self.client.loop_stop()
-        self.client.disconnect()
 
 
 
