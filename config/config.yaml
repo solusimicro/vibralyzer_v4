@@ -1,27 +1,26 @@
-points:
-  p1mt:
-    type: motor
-    rpm: 2980
-  p2mt:
-    type: motor
-    rpm: 2980
+sites:
+  SITE_A:
+    criticality: high
+    assets:
+      PUMP_01:
+        criticality: high
+        points:
+          P1MT:
+            type: motor
+            rpm: 2980
+            enabled: true
+          P3GX:
+            type: gearbox
+            rpm: 1480
+            enabled: true
 
-  p3gx:
-    type: gearbox
-    rpm: 1480
-  p4gx:
-    type: gearbox
-    rpm: 1480
-  p5gx:
-    type: gearbox
-    rpm: 1480
-  p6gx:
-    type: gearbox
-    rpm: 1480
-
-  p7pp:
-    type: pump
-    rpm: 2980
-  p8pp:
-    type: pump
-    rpm: 2980
+  SITE_B:
+    criticality: medium
+    assets:
+      COMP_01:
+        criticality: medium
+        points:
+          P1MT:
+            type: motor
+            rpm: 2960
+            enabled: true

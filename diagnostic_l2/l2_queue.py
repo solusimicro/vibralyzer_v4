@@ -4,12 +4,16 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+
 class L2JobQueue:
-    def __init__(self, maxsize=10):
+    def __init__(self, maxsize=50):
         self.queue = queue.Queue(maxsize=maxsize)
         self._worker_thread = None
         self._running = False
 
+    # =========================================================
+    # START WORKER
+    # =========================================================
     def start(self, worker_fn):
         if self._worker_thread:
             return
@@ -27,11 +31,19 @@ class L2JobQueue:
                     self.queue.task_done()
 
         self._worker_thread = threading.Thread(
-            target=_run, daemon=True
+            target=_run,
+            daemon=True
         )
         self._worker_thread.start()
-            
-    def enqueue(self, job: dict) -> bool:
+
+    # =========================================================
+    # DOMAIN API (USED BY RUNNER)
+    # =========================================================
+    def add_job(self, job: dict) -> bool:
+        """
+        Add diagnostic job to queue.
+        Non-blocking. Returns False if queue full.
+        """
         try:
             self.queue.put(job, block=False)
             return True
@@ -39,6 +51,9 @@ class L2JobQueue:
             logger.warning("L2 queue full — job dropped")
             return False
 
+    # =========================================================
+    # OPTIONAL STOP
+    # =========================================================
     def stop(self):
         self._running = False
 

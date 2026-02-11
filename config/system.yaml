@@ -1,9 +1,9 @@
 # =========================
 # SYSTEM CONFIGURATION
 # =========================
-
 system:
   name: vibralyzer
+  version: 4.0
   environment: edge
   timezone: UTC
 
@@ -14,7 +14,6 @@ mqtt:
   broker: localhost
   port: 1883
   raw_topic: vibration/raw/#
-  early_fault_topic: vibration/early_fault/{asset}/{point}
 
 # =========================
 # RAW & BUFFER
@@ -31,7 +30,7 @@ l1_feature:
   rpm_default: 3000
 
 # =========================
-# EARLY FAULT FSM
+# EARLY FAULT FSM (INTERNAL)
 # =========================
 early_fault:
   watch_persistence: 3
@@ -40,9 +39,22 @@ early_fault:
   hysteresis_clear: 5
 
 # =========================
+# BASELINE (OPTIONAL ISO DRIFT CONTROL)
+# =========================
+baseline:
+  alpha: 0.01
+  min_samples: 100
+
+# =========================
 # L2 DIAGNOSTIC (ON-DEMAND)
 # =========================
 l2:
   enable: true
   cooldown_warning_sec: 600   # 10 menit
   cooldown_alarm_sec: 60      # 1 menit
+
+# =========================
+# HEARTBEAT
+# =========================
+heartbeat:
+  interval_sec: 10
