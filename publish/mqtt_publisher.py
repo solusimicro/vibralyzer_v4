@@ -56,25 +56,22 @@ class MQTTPublisher:
     # =========================================================
     # HEALTH (PHI AUTHORITY)
     # =========================================================
-    def publish_health(self, site: str, asset: str, point: str, payload: dict):
-
+    def publish_health(self, site, asset, point, payload):
         topic = f"vibration/health/{site}/{asset}/{point}"
         self._publish(topic, payload)
 
     # =========================================================
     # RECOMMENDATION (FINAL LAYER)
     # =========================================================
-    def publish_recommendation(self, site: str, asset: str, point: str, payload: dict):
-
+    def publish_recommendation(self, site, asset, point, payload):
         topic = f"vibration/recommendation/{site}/{asset}/{point}"
         self._publish(topic, payload)
 
     # =========================================================
     # L2 DIAGNOSTIC (OPTIONAL)
     # =========================================================
-    def publish_l2(self, site: str, asset: str, point: str, payload: dict):
-
-        topic = f"vibration/l2/{site}/{asset}/{point}"
+    def publish_diagnostic(self, site, asset, point, payload):
+        topic = f"vibration/diagnostic/{site}/{asset}/{point}"
         self._publish(topic, payload)
 
 

@@ -1,35 +1,44 @@
-import time
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 def l2_worker(job):
+    """
+    Industrial L2 worker.
+    Uses event timestamp and full context.
+    """
 
     site = job["site"]
     asset = job["asset"]
     point = job["point"]
+    features = job["features"]
     publisher = job["publisher"]
+    state = job["state"]
+    phi = job["phi"]
+    event_ts = job["timestamp"]
 
-    # snapshot L1
-    l1_snapshot = job["l1_snapshot"]
+    # ------------------------------
+    # Diagnostic Logic (Replace later)
+    # ------------------------------
+    fault_type = "GEAR_WEAR"
+    confidence = 0.82
 
-    # ==============================
-    # L2 logic (diagnostic)
-    # ==============================
-    result = {
-        "asset": asset,
-        "point": point,
-        "diagnostic": "Detailed fault classification",
-        "confidence": 0.82,
+    payload = {
+        "fault_type": fault_type,
+        "state": state,
+        "phi": phi,
+        "confidence": confidence,
+        "timestamp": event_ts,
     }
 
-    # ==============================
-    # PUBLISH (FIXED)
-    # ==============================
-    publisher.publish_l2(
+    publisher.publish_diagnostic(
         site=site,
         asset=asset,
         point=point,
-        payload=result,
+        payload=payload,
     )
+
 
 
 

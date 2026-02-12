@@ -1,32 +1,19 @@
-def phi_to_state(phi, fsm_state=None):
+def phi_to_state(phi: float):
     """
-    Map PHI (0–1) to ISO state.
-    FSM can optionally influence fault_type / confidence.
+    Pure industrial severity mapping.
+    PHI is authority.
     """
 
-    # --- ISO Base Mapping (PHI authority)
-    if phi < 0.3:
+    # PHI assumed 0–100 scale
+    if phi < 30:
         state = "NORMAL"
-    elif phi < 0.6:
+    elif phi < 60:
         state = "WATCH"
-    elif phi < 0.8:
+    elif phi < 80:
         state = "WARNING"
     else:
         state = "ALARM"
 
-    # --- Default outputs
-    fault_type = "UNKNOWN"
-    confidence = float(phi)
+    return state
 
-    # --- Optional FSM refinement
-    if fsm_state is not None:
-
-        if state in ("WARNING", "ALARM"):
-            fault_type = fsm_state
-
-        # Confidence boost if FSM confirms
-        if fsm_state in ("WARNING", "ALARM"):
-            confidence = min(1.0, phi + 0.1)
-
-    return state, fault_type, confidence
 

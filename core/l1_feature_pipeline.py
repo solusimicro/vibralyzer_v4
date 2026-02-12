@@ -1,3 +1,4 @@
+import time
 import numpy as np 
 from scipy.signal import hilbert, detrend 
 from core.signal_utils import (
@@ -106,6 +107,7 @@ class L1FeaturePipeline:
             # --- ENGINEERING SUPPORT ---
             "energy_low": float(energy_low),
             "energy_high": float(energy_high),
+            "timestamp": time.time(),
         }
 
     # =============================
