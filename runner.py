@@ -7,16 +7,21 @@ from core.l1_feature_pipeline import L1FeaturePipeline
 from early_fault.scoring import EarlyFaultFSM
 from health.point_health_index import compute_phi
 from health.state_mapping import phi_to_state
+from health.asset_health_index import compute_asset_health
 
 from analytics.recommendation.recommendation_engine import RecommendationEngine
+from analytics.recommendation.asset_recommendation_engine import asset_recommendation
+
 from diagnostic_l2.l2_queue import L2JobQueue
 from diagnostic_l2.worker import l2_worker
 
 from publish.mqtt_publisher import MQTTPublisher
 from raw_ingest.mqtt_listener import start_mqtt_listener
+
 from early_fault.baseline import AdaptiveBaseline
 from early_fault.trend_detector import TrendDetector
 from early_fault.persistence import PersistenceChecker
+
 
 # =========================================================
 # MAIN
@@ -28,8 +33,6 @@ def main():
     # -----------------------------------------------------
     system_cfg = load_config("config/system.yaml")
     topology_cfg = load_config("config/config.yaml")
-
-    print("DEBUG topology keys:", topology_cfg.keys())
 
     mqtt_cfg = system_cfg["mqtt"]
     raw_cfg = system_cfg["raw"]
@@ -50,13 +53,15 @@ def main():
     )
 
     recommendation_engine = RecommendationEngine()
-
     l2_queue = L2JobQueue()
 
     if l2_cfg.get("enable", True):
         l2_queue.start(l2_worker)
 
     engines = {}
+
+    # 🔥 NEW: Point Health Cache (for asset aggregation)
+    point_health_cache = {}
 
     # -----------------------------------------------------
     # PER POINT ENGINE
@@ -103,76 +108,124 @@ def main():
     # -----------------------------------------------------
     def on_raw_message(site_id, asset_id, point, raw_payload):
 
-      # 1️⃣ Ring Buffer
-      ring_buffer.add(asset_id, point, raw_payload)
+        # 1️⃣ Ring Buffer
+        ring_buffer.add(asset_id, point, raw_payload)
 
-      if not ring_buffer.is_window_ready(asset_id, point):
-          return
+        if not ring_buffer.is_window_ready(asset_id, point):
+            return
 
-      window = ring_buffer.get_window(asset_id, point)
+        window = ring_buffer.get_window(asset_id, point)
 
-      # 2️⃣ L1
-      engine = get_point_engine(site_id, asset_id, point)
-      features = engine["l1"].compute(window)
+        # 2️⃣ L1
+        engine = get_point_engine(site_id, asset_id, point)
+        features = engine["l1"].compute(window)
 
-      event_ts = features["timestamp"]
+        event_ts = features["timestamp"]
 
-      publisher.publish_l1(
-          site=site_id,
-          asset=asset_id,
-          point=point,
-          payload=features,
-      )
+        publisher.publish_l1(
+            site=site_id,
+            asset=asset_id,
+            point=point,
+            payload=features,
+        )
 
-      # 3️⃣ PHI (Authority)
-      phi = compute_phi(features)
-      state = phi_to_state(phi)
+        # 3️⃣ PHI (Severity Authority)
+        phi = compute_phi(features)
+        state = phi_to_state(phi)
 
-      # 4️⃣ HEALTH (share same timestamp)
-      publisher.publish_health(
-          site=site_id,
-          asset=asset_id,
-          point=point,
-          payload={
-              "phi": phi,
-              "state": state,
-              "timestamp": event_ts,
-          },
-      )
+        health_payload = {
+            "phi": phi,
+            "state": state,
+            "timestamp": event_ts,
+        }
 
-      # 5️⃣ L2 Diagnostic (Async)
-      if state in ("WARNING", "ALARM") and l2_cfg.get("enable", True):
+        # 4️⃣ Publish Point Health
+        publisher.publish_health(
+            site=site_id,
+            asset=asset_id,
+            point=point,
+            payload=health_payload,
+        )
 
-          l2_queue.enqueue({
-              "site": site_id,
-              "asset": asset_id,
-              "point": point,
-              "features": features,
-              "publisher": publisher,
-              "state": state,
-              "phi": phi,
-              "timestamp": event_ts,
-          })
+        # 🔥 STORE for Asset Aggregation
+        point_health_cache[(site_id, asset_id, point)] = {
+            "phi": phi,
+            "state": state,
+            "point_id": point,
+        }
 
-      # 6️⃣ Recommendation (Deterministic)
-      recommendation = recommendation_engine.recommend(
-          fault_type="UNKNOWN",
-          state=state,
-      )
+        # -------------------------------------------------
+        # 🔥 ASSET AGGREGATION (NEW)
+        # -------------------------------------------------
+        asset_points = [
+            v for (s, a, p), v in point_health_cache.items()
+            if s == site_id and a == asset_id
+        ]
 
-      # Industrial completion
-      recommendation.update({
-          "phi": phi,
-          "confidence": round(phi / 100, 2),
-          "timestamp": event_ts,
-      })
+        asset_health = compute_asset_health(asset_points)
 
-      publisher.publish_recommendation(
-          site=site_id,
-          asset=asset_id,
-          point=point,
-          payload=recommendation,
-      )
+        asset_health_payload = {
+            "phi": asset_health["phi"],
+            "state": asset_health["state"],
+            "source_point": asset_health.get("source_point"),
+            "timestamp": event_ts,
+        }
+
+        publisher.publish_asset_health(
+            site=site_id,
+            asset=asset_id,
+            payload=asset_health_payload,
+        )
+
+        # Asset Recommendation
+        asset_rec = asset_recommendation(asset_health["state"])
+        asset_rec.update({
+            "phi": asset_health["phi"],
+            "timestamp": event_ts,
+        })
+
+        publisher.publish_asset_recommendation(
+            site=site_id,
+            asset=asset_id,
+            payload=asset_rec,
+        )
+
+        # -------------------------------------------------
+        # 5️⃣ L2 Diagnostic (Async)
+        # -------------------------------------------------
+        if state in ("WARNING", "ALARM") and l2_cfg.get("enable", True):
+
+            l2_queue.enqueue({
+                "site": site_id,
+                "asset": asset_id,
+                "point": point,
+                "features": features,
+                "publisher": publisher,
+                "state": state,
+                "phi": phi,
+                "timestamp": event_ts,
+            })
+
+        # -------------------------------------------------
+        # 6️⃣ Point Recommendation
+        # -------------------------------------------------
+        recommendation = recommendation_engine.recommend(
+            fault_type="UNKNOWN",
+            state=state,
+        )
+
+        recommendation.update({
+            "phi": phi,
+            "confidence": round(phi / 100, 2),
+            "timestamp": event_ts,
+        })
+
+        publisher.publish_recommendation(
+            site=site_id,
+            asset=asset_id,
+            point=point,
+            payload=recommendation,
+        )
 
     # -----------------------------------------------------
     # START LISTENER

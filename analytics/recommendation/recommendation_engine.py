@@ -23,7 +23,7 @@ class RecommendationEngine:
         fault_type: str | None = None,
         confidence: float | None = None,
         phi: float | None = None,
-        lang: str = "en",
+        lang: str = "id",
     ) -> dict:
         """
         Unified recommendation object (FINAL CONTRACT)

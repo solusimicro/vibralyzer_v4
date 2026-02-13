@@ -17,5 +17,5 @@ def compute_phi(l1_features: dict) -> float:
         0.2 * crest
     )
 
-    phi = 100.0 * (1.0 - severity)
+    phi = 100.0 * severity  #(1.0 - severity)
     return round(max(min(phi, 100.0), 0.0), 1)

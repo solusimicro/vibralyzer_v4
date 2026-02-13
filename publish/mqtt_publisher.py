@@ -1,81 +1,96 @@
 import json
 import time
+import copy
 import paho.mqtt.client as mqtt
 
 
 class MQTTPublisher:
     """
-    Vibralyzer v4 – MQTT Publisher (ISO-Purist Multi-Site)
+    Vibralyzer v4 – MQTT Publisher (Industrial-Grade)
 
-    Published Layers:
-    -----------------
-    1. L1 Features
-       Topic: vibration/l1/{site}/{asset}/{point}
+    Layers:
+    -------
+    Point:
+        vibration/l1/{site}/{asset}/{point}
+        vibration/health/{site}/{asset}/{point}
+        vibration/recommendation/{site}/{asset}/{point}
+        vibration/diagnostic/{site}/{asset}/{point}
 
-    2. Health (PHI Authority)
-       Topic: vibration/health/{site}/{asset}/{point}
-
-    3. Recommendation (Final Alarm)
-       Topic: vibration/recommendation/{site}/{asset}/{point}
-
-    4. L2 (Optional Diagnostic Layer)
-       Topic: vibration/l2/{site}/{asset}/{point}
+    Asset:
+        vibration/asset/health/{site}/{asset}
+        vibration/asset/recommendation/{site}/{asset}
     """
 
     # =========================================================
     # INIT
     # =========================================================
-    def __init__(self, broker: str, port: int):
+    def __init__(self, broker: str, port: int, client_id: str = "vibralyzer_v4"):
 
-        self.client = mqtt.Client()
+        self.client = mqtt.Client(client_id=client_id)
         self.client.connect(broker, port)
         self.client.loop_start()
 
     # =========================================================
-    # INTERNAL PUBLISH
+    # INTERNAL SAFE PUBLISH
     # =========================================================
-    def _publish(self, topic: str, payload: dict, qos: int = 1, retain: bool = False):
+    def _publish(
+        self,
+        topic: str,
+        payload: dict,
+        qos: int = 1,
+        retain: bool = False,
+    ):
 
-        payload["timestamp"] = payload.get("timestamp", time.time())
+        # Copy to avoid mutating original payload
+        data = copy.deepcopy(payload)
 
-        self.client.publish(
+        # Only add timestamp if not provided
+        if "timestamp" not in data:
+            data["timestamp"] = time.time()
+
+        result = self.client.publish(
             topic,
-            json.dumps(payload),
+            json.dumps(data),
             qos=qos,
             retain=retain,
         )
 
+        # Optional delivery check
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            print(f"[MQTT] Publish failed: {topic} (rc={result.rc})")
+
     # =========================================================
-    # L1 FEATURE
+    # ---------------- POINT LEVEL ----------------
     # =========================================================
+
     def publish_l1(self, site: str, asset: str, point: str, payload: dict):
-
         topic = f"vibration/l1/{site}/{asset}/{point}"
-        self._publish(topic, payload)
+        self._publish(topic, payload, retain=False)
 
-    # =========================================================
-    # HEALTH (PHI AUTHORITY)
-    # =========================================================
-    def publish_health(self, site, asset, point, payload):
+    def publish_health(self, site: str, asset: str, point: str, payload: dict):
         topic = f"vibration/health/{site}/{asset}/{point}"
-        self._publish(topic, payload)
+        self._publish(topic, payload, retain=True)
 
-    # =========================================================
-    # RECOMMENDATION (FINAL LAYER)
-    # =========================================================
-    def publish_recommendation(self, site, asset, point, payload):
+    def publish_recommendation(self, site: str, asset: str, point: str, payload: dict):
         topic = f"vibration/recommendation/{site}/{asset}/{point}"
-        self._publish(topic, payload)
+        self._publish(topic, payload, retain=True)
 
-    # =========================================================
-    # L2 DIAGNOSTIC (OPTIONAL)
-    # =========================================================
-    def publish_diagnostic(self, site, asset, point, payload):
+    def publish_diagnostic(self, site: str, asset: str, point: str, payload: dict):
         topic = f"vibration/diagnostic/{site}/{asset}/{point}"
-        self._publish(topic, payload)
+        self._publish(topic, payload, retain=False)
 
+    # =========================================================
+    # ---------------- ASSET LEVEL ----------------
+    # =========================================================
 
+    def publish_asset_health(self, site: str, asset: str, payload: dict):
+        topic = f"vibration/asset/health/{site}/{asset}"
+        self._publish(topic, payload, retain=True)
 
+    def publish_asset_recommendation(self, site: str, asset: str, payload: dict):
+        topic = f"vibration/asset/recommendation/{site}/{asset}"
+        self._publish(topic, payload, retain=True)
+# =========================================================  
 
 
 
